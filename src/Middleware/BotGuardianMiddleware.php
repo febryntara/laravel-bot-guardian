@@ -87,7 +87,7 @@ class BotGuardianMiddleware
      * exceeded, set a PENDING block flag — the current request already has its
      * response committed, so the next request from this IP will be blocked.
      */
-    public function terminate(Request $request, Response $response): void
+    public function terminate(Request $request, $response): void
     {
         if (! config('botguardian.enabled', true)) {
             return;
