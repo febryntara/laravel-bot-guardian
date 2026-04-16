@@ -8,35 +8,48 @@ use Febryntara\LaravelBotGuardian\RecidivistBlocker;
 class BlockAction
 {
     protected RecidivistBlocker $recidivist;
+    protected NotifyAction $notifyAction;
 
-    public function __construct(RecidivistBlocker $recidivist)
+    public function __construct(RecidivistBlocker $recidivist, NotifyAction $notifyAction)
     {
         $this->recidivist = $recidivist;
+        $this->notifyAction = $notifyAction;
     }
 
     /**
      * Block an IP temporarily or permanently.
      */
-    public function execute(string $ip, bool $permanent = false): void
+    public function execute(string $ip, bool $permanent = false, array $context = []): void
     {
         $blockKey = "botguardian:blocked:{$ip}";
         $duration = $permanent ? 0 : (config('botguardian.block_duration', 3600));
 
         if ($permanent) {
             Cache::forever($blockKey, true);
-            // Also record as permanent in a separate key for identification
             Cache::forever("botguardian:permanent:{$ip}", true);
         } else {
             Cache::put($blockKey, true, $duration);
         }
 
-        // Record for recidivist tracking
         $this->recidivist->recordBlock($ip);
 
-        // Escalate to permanent if recidivist threshold reached
         if (! $permanent && $this->recidivist->shouldPermanentBlock($ip)) {
-            $this->execute($ip, true);
+            $this->execute($ip, true, $context);
+            return;
         }
+
+        // Dispatch notification
+        $totalScore = $context['total_score'] ?? config('botguardian.threshold', 100);
+        $triggeredBy = $context['triggered_by'] ?? 'BotGuardian';
+        $this->notifyAction->onBlock($ip, $totalScore, $triggeredBy, $context, $permanent);
+
+        // Forward to telemetry if enabled
+        $this->notifyAction->toTelemetry('botguardian.block', [
+            'ip' => $ip,
+            'permanent' => $permanent,
+            'score' => $totalScore,
+            'triggered_by' => $triggeredBy,
+        ], 'warning');
     }
 
     /**
@@ -96,14 +109,7 @@ class BlockAction
      */
     public function getBlockedCount(): int
     {
-        $store = Cache::getStore();
-        if (method_exists($store, 'getFlatKey')) {
-            // Redis-backed or similar
-            $count = 0;
-            // This is implementation-specific; for now return from a tracking key
-            $activeCount = Cache::get('botguardian:blocked:count', 0);
-            return $activeCount;
-        }
-        return 0;
+        $activeCount = Cache::get('botguardian:blocked:count', 0);
+        return $activeCount;
     }
 }

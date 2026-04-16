@@ -6,6 +6,7 @@ use Febryntara\LaravelBotGuardian\Middleware\BotGuardianMiddleware;
 use Febryntara\LaravelBotGuardian\Scorer\BotScoreCalculator;
 use Febryntara\LaravelBotGuardian\WhitelistChecker;
 use Febryntara\LaravelBotGuardian\Actions\BlockAction;
+use Febryntara\LaravelBotGuardian\Actions\NotifyAction;
 use Febryntara\LaravelBotGuardian\RecidivistBlocker;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -28,7 +29,7 @@ class BotGuardianMiddlewareTest extends TestCase
         $this->middleware = new BotGuardianMiddleware(
             new BotScoreCalculator(),
             new WhitelistChecker(),
-            new BlockAction(new RecidivistBlocker()),
+            new BlockAction(new RecidivistBlocker(), app(NotifyAction::class)),
             new RecidivistBlocker()
         );
     }

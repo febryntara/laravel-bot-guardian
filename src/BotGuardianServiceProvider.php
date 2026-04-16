@@ -2,11 +2,16 @@
 
 namespace Febryntara\LaravelBotGuardian;
 
+use Febryntara\LaravelBotGuardian\Console\Commands\BlacklistCommand;
+use Febryntara\LaravelBotGuardian\Console\Commands\StatsCommand;
+use Febryntara\LaravelBotGuardian\Console\Commands\UnblockCommand;
+use Febryntara\LaravelBotGuardian\Console\Commands\WhitelistCommand;
 use Febryntara\LaravelBotGuardian\Middleware\BotGuardianMiddleware;
 use Febryntara\LaravelBotGuardian\Scorer\BotScoreCalculator;
 use Febryntara\LaravelBotGuardian\WhitelistChecker;
 use Febryntara\LaravelBotGuardian\Actions\BlockAction;
 use Febryntara\LaravelBotGuardian\Actions\LogAction;
+use Febryntara\LaravelBotGuardian\Actions\NotifyAction;
 use Illuminate\Support\ServiceProvider;
 
 class BotGuardianServiceProvider extends ServiceProvider
@@ -18,6 +23,15 @@ class BotGuardianServiceProvider extends ServiceProvider
         ], 'botguardian-config');
 
         $this->loadViewsFrom(__DIR__ . '/resources/views', 'botguardian');
+
+        if ($this->app->runningInConsole()) {
+            $this->commands([
+                UnblockCommand::class,
+                StatsCommand::class,
+                WhitelistCommand::class,
+                BlacklistCommand::class,
+            ]);
+        }
 
         $router = $this->app['router'];
 
@@ -39,7 +53,8 @@ class BotGuardianServiceProvider extends ServiceProvider
         $this->app->singleton(BotScoreCalculator::class);
         $this->app->singleton(WhitelistChecker::class);
         $this->app->singleton(RecidivistBlocker::class);
-        $this->app->singleton(BlockAction::class);
         $this->app->singleton(LogAction::class);
+        $this->app->singleton(NotifyAction::class);
+        $this->app->singleton(BlockAction::class);
     }
 }

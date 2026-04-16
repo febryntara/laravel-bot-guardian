@@ -8,6 +8,9 @@ Lightweight, score-based bot protection middleware for Laravel. Detects and bloc
 
 - **Score-based detection** — satu violation bukan block; pola yang menentukan
 - **12 detection layers** — velocity, honeypot, headers, 404 spam, login brute-force, endpoint rate limit, behavioral pattern, JS challenge, proxy/VPN, distributed attack, slow & low attack, session anomaly
+- **Notification on block** — email via Laravel mail + webhook (with HMAC signing)
+- **Artisan CLI** — unblock, stats, whitelist, blacklist commands
+- **Telemetry log integration** — forward detection events to `laravel-telemetry-logger` (optional companion package)
 - **Permanent block for repeat offenders** — recidivist attacker escalation
 - **Whitelist / Blacklist** — manual IP control (exact, CIDR, wildcard)
 - **Zero config required** — works out of the box with sensible defaults
@@ -188,14 +191,110 @@ Request → Whitelist? → Blacklist? → [Detectors] → Score Accumulator
 
 ---
 
-## Artisan Commands (Roadmap Phase 2)
+## Artisan Commands
 
 ```bash
 php artisan botguardian:unblock <ip>    # Unblock IP
-php artisan botguardian:stats           # Lihat statistik
-php artisan botguardian:whitelist <ip> # Add ke whitelist
-php artisan botguardian:blacklist <ip> # Add ke blacklist
+php artisan botguardian:stats           # Show detection stats
+php artisan botguardian:whitelist <ip> # Add IP to whitelist (auto-unblocks if blocked)
+php artisan botguardian:blacklist <ip>  # Add IP to blacklist + immediate permanent block
 ```
+
+Stats command supports `--json` flag for programmatic use:
+
+```bash
+php artisan botguardian:stats --json
+php artisan botguardian:stats --top=20
+```
+
+---
+
+## Notifications
+
+### Email
+
+Uses Laravel's built-in mail (SMTP). Configure in `.env`:
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=smtp.mailtrap.io
+MAIL_PORT=2525
+MAIL_USERNAME=
+MAIL_PASSWORD=
+```
+
+Enable in config:
+
+```php
+'notifications' => [
+    'email' => [
+        'enabled' => true,
+        'to' => ['admin@example.com', 'security@example.com'],
+        'subject_prefix' => '[BotGuardian]',
+    ],
+],
+```
+
+### Webhook
+
+POST JSON payload to any endpoint. Supports HMAC-SHA256 signing.
+
+```php
+'notifications' => [
+    'webhook' => [
+        'enabled' => true,
+        'url' => 'https://your-webhook-endpoint.com/bot-alert',
+        'secret' => 'your-hmac-secret',     // optional: sets X-BotGuardian-Signature header
+        'timeout' => 10,                    // seconds
+        'retry' => 3,                       // attempts on failure
+        'include_context' => true,           // include full request context
+    ],
+],
+```
+
+**Webhook payload:**
+
+```json
+{
+  "event": "botguardian.block",
+  "type": "temporary",
+  "timestamp": "2025-04-16T20:45:00+07:00",
+  "ip": "203.0.113.42",
+  "total_score": 85,
+  "triggered_by": "VelocityDetector",
+  "block_duration": 3600,
+  "context": {
+    "url": "https://example.com/login",
+    "user_agent": "python-requests/2.28.0",
+    "method": "POST",
+    "referer": null,
+    "detector_scores": {
+      "VelocityDetector": 20,
+      "HeaderDetector": 25,
+      "HoneypotDetector": 50
+    }
+  }
+}
+```
+
+---
+
+## Telemetry Log Integration
+
+Bot Guardian can forward all detection events to the companion package **[laravel-telemetry-logger](https://github.com/febryntara/laravel-telemetry-logger)**.
+
+If you already use `laravel-telemetry-logger` for application logging, enable this integration to have bot events appear in your centralized log pipeline alongside request logs, exceptions, and slow queries.
+
+```php
+'telemetry' => [
+    'enabled' => true,
+],
+```
+
+Events forwarded:
+- `botguardian.block` — when an IP is blocked (level: `warning`)
+
+No configuration needed on the telemetry side — bot guardian events are sent via `logEvent()` using the same payload format.
 
 ---
 
@@ -208,11 +307,14 @@ php artisan botguardian:blacklist <ip> # Add ke blacklist
 - [x] Recidivist permanent block escalation
 - [x] Whitelist / Blacklist (exact, CIDR, wildcard)
 - [x] Atomic cache operations (race condition fix)
-- [ ] BotEvent model + database logging
-- [ ] Artisan commands (unblock, stats, whitelist, blacklist)
-- [ ] Notification on block (mail/webhook)
-- [ ] JS challenge / headless browser fingerprinting
-- [ ] Dashboard
+- [x] JS challenge / headless browser fingerprinting
+- [x] Proxy / VPN detection
+- [x] Distributed attack detection
+- [x] Slow & low attack detection
+- [x] Session anomaly detection
+- [x] Artisan commands (unblock, stats, whitelist, blacklist)
+- [x] Notification on block (email + webhook)
+- [x] Telemetry log integration (`laravel-telemetry-logger` companion)
 
 ---
 
