@@ -17,6 +17,7 @@ class BotGuardianMiddleware
     protected BotScoreCalculator $scorer;
     protected WhitelistChecker $whitelist;
     protected BlockAction $blockAction;
+    protected RecidivistBlocker $recidivist;
 
     public function __construct(
         BotScoreCalculator $scorer,
@@ -53,29 +54,78 @@ class BotGuardianMiddleware
             return $this->blockResponse($request, $ip);
         }
 
-        // === Run all detectors ===
+        // === FIX #1: Pending block from terminate() — block on NEXT request ===
+        // When terminate() detects threshold-exceeding 404 score, it sets a pending
+        // flag (can't block current request because response already sent).
+        // Check it here — before forwarding to application.
+        if (Cache::has("botguardian:pending_block:{$ip}")) {
+            Cache::forget("botguardian:pending_block:{$ip}");
+            return $this->doBlock($request, $ip, '404_spam');
+        }
+
+        // === FIX #1: Atomic scoring — score → increment → check ===
+        // increment() returns the NEW total atomically.
+        // No TOCTOU race because increment is atomic and check is AFTER it.
         $score = $this->scorer->calculate($request);
 
-        if ($score >= config('botguardian.threshold', 100)) {
-            // Accumulate score
-            $this->scorer->increment($request, $score);
-            $total = $this->scorer->getTotalScore($request);
+        if ($score > 0) {
+            $total = $this->scorer->increment($request, $score);
 
             if ($total >= config('botguardian.threshold', 100)) {
-                // === RECIDIVIST: escalate to permanent if repeat offender ===
-                if ($this->recidivist->shouldPermanentBlock($ip)) {
-                    $this->blockAction->execute($ip, true);
-                    $this->logBlock($ip, $total, $request, 'permanent_recidivist');
-                } else {
-                    $this->blockAction->execute($ip, false);
-                    $this->logBlock($ip, $total, $request, 'temporary');
-                }
-
-                return $this->blockResponse($request, $ip);
+                return $this->doBlock($request, $ip, 'score_threshold');
             }
         }
 
         return $next($request);
+    }
+
+    /**
+     * FIX #7: terminate() — post-response 404 detection.
+     *
+     * Response status code known here (not in handle()). For actual HTTP 404
+     * responses, call increment404() which adds to total score. If threshold is
+     * exceeded, set a PENDING block flag — the current request already has its
+     * response committed, so the next request from this IP will be blocked.
+     */
+    public function terminate(Request $request, Response $response): void
+    {
+        if (! config('botguardian.enabled', true)) {
+            return;
+        }
+
+        $ip = $request->ip();
+
+        if ($this->whitelist->isWhitelisted($ip) || $this->isBlocked($ip)) {
+            return;
+        }
+
+        if ($response->getStatusCode() === 404) {
+            $scoreAdded = $this->scorer->increment404($request);
+
+            if ($scoreAdded > 0) {
+                // Score was added AND threshold was exceeded.
+                // Current response already sent — set pending block for next request.
+                Cache::put("botguardian:pending_block:{$ip}", true, config('botguardian.block_duration', 3600));
+            }
+        }
+    }
+
+    /**
+     * Actually perform the block. Separated so handle() and terminate() can both call it.
+     */
+    protected function doBlock(Request $request, string $ip, string $reason): Response
+    {
+        $total = $this->scorer->getTotalScore($request);
+
+        if ($this->recidivist->shouldPermanentBlock($ip)) {
+            $this->blockAction->execute($ip, true);
+            $this->logBlock($ip, $total, $request, 'permanent_recidivist');
+        } else {
+            $this->blockAction->execute($ip, false);
+            $this->logBlock($ip, $total, $request, $reason);
+        }
+
+        return $this->blockResponse($request, $ip);
     }
 
     protected function isBlocked(string $ip): bool
@@ -85,27 +135,23 @@ class BotGuardianMiddleware
 
     protected function blockResponse(Request $request, string $ip, string $reason = 'blocked'): Response
     {
-        if ($reason !== 'blacklisted') {
-            $view = config('botguardian.block_view', 'botguardian::blocked');
-            $viewExists = view()->exists($view);
+        $view = config('botguardian.block_view', 'botguardian::blocked');
+        $viewExists = view()->exists($view);
 
-            if ($viewExists) {
-                return response()->view($view, [
-                    'ip' => $ip,
-                    'permanent' => $this->blockAction->isPermanentBlocked($ip),
-                    'reason' => $reason,
-                ], 403);
-            }
+        if ($viewExists && $reason !== 'blacklisted') {
+            return response()->view($view, [
+                'ip' => $ip,
+                'permanent' => $this->blockAction->isPermanentBlocked($ip),
+                'reason' => $reason,
+            ], 403);
         }
 
-        // Fallback plain response
-        $message = $reason === 'blacklisted'
-            ? 'Access denied.'
-            : 'Access has been temporarily blocked due to suspicious activity.';
-
-        if ($this->blockAction->isPermanentBlocked($ip)) {
-            $message = 'Access permanently blocked.';
-        }
+        $message = match ($reason) {
+            'blacklisted' => 'Access denied.',
+            default => $this->blockAction->isPermanentBlocked($ip)
+                ? 'Access permanently blocked.'
+                : 'Access has been temporarily blocked due to suspicious activity.',
+        };
 
         return response($message, 403);
     }

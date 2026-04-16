@@ -9,6 +9,7 @@ return [
         'max_requests' => 30,
         'time_window' => 60,
         'score' => 20,
+        'warning_threshold' => 0.8, // Log warning at 80% of limit (req 24 of 30)
     ],
 
     // === 404 SPAM ===
@@ -33,6 +34,10 @@ return [
             '/admin.php',
             '/login.php',
             '/shell.php',
+        ],
+        'exclude_routes' => [
+            // Exclude specific paths from honeypot detection
+            // e.g., '/admin.php' => your real admin URL
         ],
         'score' => 50,
     ],

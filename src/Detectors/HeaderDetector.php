@@ -16,7 +16,7 @@ class HeaderDetector implements DetectorInterface
         $score = 0;
 
         // Check empty user-agent
-        if (! empty($config['block_empty_user_agent'])) {
+        if ($config['block_empty_user_agent']) {
             $userAgent = $request->userAgent();
             if (empty($userAgent)) {
                 $score += $config['empty_user_agent_score'] ?? 25;

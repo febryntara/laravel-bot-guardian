@@ -8,6 +8,7 @@ use Febryntara\LaravelBotGuardian\WhitelistChecker;
 use Febryntara\LaravelBotGuardian\Actions\BlockAction;
 use Febryntara\LaravelBotGuardian\RecidivistBlocker;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 
 class BotGuardianMiddlewareTest extends TestCase
@@ -90,5 +91,44 @@ class BotGuardianMiddlewareTest extends TestCase
 
         $response = $this->middleware->handle($request, fn($req) => 'ok');
         $this->assertEquals(403, $response->getStatusCode());
+    }
+
+    public function test_terminate_adds_score_for_404_response()
+    {
+        config(['botguardian.threshold' => 30]);
+        config(['botguardian.not_found_spam.max_hits' => 10]);
+        config(['botguardian.not_found_spam.score' => 30]);
+        $ip = '10.0.0.200';
+
+        // NOTE: terminate() fires AFTER handle() returns a response.
+        // The block activates on the NEXT handle() call, not the current one.
+        // So we need: 10 passes → 1 pass that triggers scoring in terminate() →
+        // NEXT request gets blocked.
+
+        // First 10 requests: 404 count=10, score not yet added (no threshold hit)
+        for ($i = 0; $i < 10; $i++) {
+            $request = Request::create('/nonexistent-' . $i);
+            $request->server->set('REMOTE_ADDR', $ip);
+            $response = new Response('Not Found', 404);
+            $result = $this->middleware->handle($request, fn($req) => $response);
+            $this->assertEquals(404, $result->getStatusCode()); // not blocked yet
+            $this->middleware->terminate($request, $response);
+        }
+
+        // 11th request: count becomes 11 > 10, 404 score=30 added in terminate()
+        // But block activates AFTER response, so this request passes through
+        $request = Request::create('/nonexistent-10');
+        $request->server->set('REMOTE_ADDR', $ip);
+        $response = new Response('Not Found', 404);
+        $result = $this->middleware->handle($request, fn($req) => $response);
+        $this->assertEquals(404, $result->getStatusCode()); // passes through (block after response)
+        $this->middleware->terminate($request, $response);
+
+        // 12th request: IP is now blocked → 403
+        $request = Request::create('/anything');
+        $request->server->set('REMOTE_ADDR', $ip);
+        $result = $this->middleware->handle($request, fn($req) => new Response('OK'));
+        $this->assertEquals(403, $result->getStatusCode());
+        $this->assertTrue(Cache::has("botguardian:blocked:{$ip}"));
     }
 }

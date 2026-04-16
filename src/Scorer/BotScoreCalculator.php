@@ -22,24 +22,21 @@ class BotScoreCalculator
             new \Febryntara\LaravelBotGuardian\Detectors\VelocityDetector(),
             new \Febryntara\LaravelBotGuardian\Detectors\HoneypotDetector(),
             new \Febryntara\LaravelBotGuardian\Detectors\HeaderDetector(),
-            new \Febryntara\LaravelBotGuardian\Detectors\NotFoundDetector(),
+            // NotFoundDetector EXCLUDED: 404 detection is handled EXCLUSIVELY
+            // in BotGuardianMiddleware::terminate() via increment404(), using
+            // the ACTUAL HTTP 404 status code (not just route-null heuristic).
+            // This eliminates double-count and ensures response-accurate detection.
             new \Febryntara\LaravelBotGuardian\Detectors\LoginAttemptDetector(),
             new \Febryntara\LaravelBotGuardian\Detectors\EndpointRateLimiter(),
             new \Febryntara\LaravelBotGuardian\Detectors\BehavioralPatternDetector(),
         ];
     }
 
-    /**
-     * Get all detector instances (for external access like stats).
-     */
     public function getDetectors(): array
     {
         return $this->detectors;
     }
 
-    /**
-     * Calculate total violation score for a request.
-     */
     public function calculate(Request $request): int
     {
         $totalScore = 0;
@@ -53,9 +50,6 @@ class BotScoreCalculator
         return $totalScore;
     }
 
-    /**
-     * Get the total accumulated score for this IP within the decay window.
-     */
     public function getTotalScore(Request $request): int
     {
         $ip = $request->ip();
@@ -64,55 +58,63 @@ class BotScoreCalculator
     }
 
     /**
-     * Increment the score for this IP within the decay window.
-     * FIX: Use atomic increment to avoid race condition.
+     * FIX #1: increment() now returns the NEW total atomically.
+     * No need for separate getTotalScore() call after increment.
      */
-    public function increment(Request $request, int $score): void
+    public function increment(Request $request, int $score): int
     {
         $ip = $request->ip();
         $key = "botguardian:score:{$ip}";
         $window = config('botguardian.score_decay_window', 300);
 
-        $current = Cache::increment($key);
-        if ($current === 1) {
-            // First score — set the window
+        $newTotal = Cache::increment($key);
+        if ($newTotal === 1) {
             Cache::put($key, $score, $window);
-        } else {
-            // Subsequent — add to existing, preserve expiry
-            $existing = Cache::get($key, 0);
-            Cache::put($key, $existing + $score, $window);
+            return $score;
         }
+
+        $existing = Cache::get($key, 0);
+        $newTotal = $existing + $score;
+        Cache::put($key, $newTotal, $window);
+        return $newTotal;
     }
 
     /**
-     * Reset score for an IP (e.g., on manual unblock).
+     * FIX #7: Called from terminate() after response is confirmed as 404.
+     * Uses ACTUAL HTTP 404 status code (not route-null heuristic).
+     * Uses SAME cache key as NotFoundDetector::detect() so they track together.
+     * increment404() adds the score IF NotFoundDetector already returned score
+     * (i.e., terminate confirms what detect() predicted). This prevents
+     * false-positives from custom 404 handlers that return non-404 codes.
      */
+    public function increment404(Request $request): int
+    {
+        $config = config('botguardian.not_found_spam');
+        $maxHits = $config['max_hits'] ?? 10;
+        $timeWindow = $config['time_window'] ?? 60;
+        $score = $config['score'] ?? 30;
+
+        $ip = $request->ip();
+        // Same key as NotFoundDetector::detect() — they track together
+        $key = "botguardian:404:{$ip}";
+
+        $count = Cache::increment($key);
+        if ($count === 1) {
+            Cache::put($key, 1, $timeWindow);
+            $count = 1;
+        } else {
+            $count = Cache::get($key, $count);
+        }
+
+        if ($count > $maxHits) {
+            return $this->increment($request, $score);
+        }
+
+        return 0;
+    }
+
     public function resetScore(string $ip): void
     {
         Cache::forget("botguardian:score:{$ip}");
-    }
-
-    /**
-     * Get current velocity count for an IP.
-     */
-    public function getVelocityCount(string $ip): int
-    {
-        return Cache::get("botguardian:velocity:{$ip}", 0);
-    }
-
-    /**
-     * Get current 404 count for an IP.
-     */
-    public function getNotFoundCount(string $ip): int
-    {
-        return Cache::get("botguardian:404:{$ip}", 0);
-    }
-
-    /**
-     * Get login attempt count for an IP.
-     */
-    public function getLoginAttemptCount(string $ip): int
-    {
-        return Cache::get("botguardian:login_attempts:{$ip}", 0);
     }
 }

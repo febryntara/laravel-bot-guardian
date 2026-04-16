@@ -14,9 +14,18 @@ class HoneypotDetector implements DetectorInterface
 
         $config = config('botguardian.honeypot');
         $honeypotRoutes = $config['routes'] ?? [];
+        $excludeRoutes = $config['exclude_routes'] ?? []; // NEW: per-route exclusions
         $score = $config['score'] ?? 50;
 
         $path = '/' . ltrim($request->path(), '/');
+
+        // Check exclusions first — excluded routes always return 0
+        foreach ($excludeRoutes as $route) {
+            $excludePath = '/' . ltrim($route, '/');
+            if ($path === $excludePath || str_starts_with($path, rtrim($excludePath, '/') . '/')) {
+                return 0;
+            }
+        }
 
         foreach ($honeypotRoutes as $route) {
             $honeypotPath = '/' . ltrim($route, '/');

@@ -6,10 +6,17 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Detector 404 spam — mendeteksi IP yang sering hit endpoint tidak ada.
+ * NotFoundDetector — 404 spam detection.
  *
- * Bot scanner biasanya crawl banyak path yang tidak exist untuk mencari
- * vulnerability. Manusia normal jarang dapat 404 berkali-kali.
+ * FIX #7: This detector is EXCLUDED from BotScoreCalculator's default list.
+ * Primary 404 detection is handled in BotGuardianMiddleware::terminate()
+ * via BotScoreCalculator::increment404(), which uses the ACTUAL HTTP 404 status code.
+ *
+ * This detect() method remains as a FALLBACK for cases where:
+ * - terminate() is not called (non-Laravel context)
+ * - standalone usage without the full middleware
+ *
+ * It uses the same cache key so the two systems share state.
  */
 class NotFoundDetector implements DetectorInterface
 {
@@ -19,29 +26,25 @@ class NotFoundDetector implements DetectorInterface
             return 0;
         }
 
-        // Only activate for 404 responses — dipanggil after response
-        // Middleware lain sudah set status code
-        if ($request->route() === null) {
-            $ip = $request->ip();
-            $key = "botguardian:404:{$ip}";
+        // Same key as increment404() in BotScoreCalculator
+        $ip = $request->ip();
+        $key = "botguardian:404:{$ip}";
 
-            $config = config('botguardian.not_found_spam');
-            $maxHits = $config['max_hits'] ?? 10;
-            $timeWindow = $config['time_window'] ?? 60;
-            $score = $config['score'] ?? 30;
+        $config = config('botguardian.not_found_spam');
+        $maxHits = $config['max_hits'] ?? 10;
+        $score = $config['score'] ?? 30;
 
-            // FIX: Use atomic increment
-            $count = Cache::increment($key);
-            if ($count === 1) {
-                Cache::put($key, 1, $timeWindow);
-                $count = 1;
-            } else {
-                $count = Cache::get($key, $count);
-            }
+        $count = Cache::increment($key);
+        if ($count === 1) {
+            // Set expiry only on first increment (1 second for fallback, short-lived)
+            Cache::put($key, 1, 1);
+            $count = 1;
+        } else {
+            $count = Cache::get($key, $count);
+        }
 
-            if ($count > $maxHits) {
-                return $score;
-            }
+        if ($count > $maxHits) {
+            return $score;
         }
 
         return 0;

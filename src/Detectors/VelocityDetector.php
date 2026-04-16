@@ -4,6 +4,7 @@ namespace Febryntara\LaravelBotGuardian\Detectors;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class VelocityDetector implements DetectorInterface
 {
@@ -19,18 +20,27 @@ class VelocityDetector implements DetectorInterface
         $maxRequests = $config['max_requests'] ?? 30;
         $timeWindow = $config['time_window'] ?? 60;
         $score = $config['score'] ?? 20;
+        $warningThreshold = $config['warning_threshold'] ?? 0.8; // 80% of max
 
-        // FIX: Use atomic increment to avoid race condition.
-        // Cache::increment() returns the NEW value after increment.
-        // We check AFTER increment — if > max, the request triggered the excess.
+        // Atomic increment
         $count = Cache::increment($key);
-
-        // Set expiry only on first increment
         if ($count === 1) {
             Cache::put($key, 1, $timeWindow);
             $count = 1;
         } else {
             $count = Cache::get($key, $count);
+        }
+
+        // NEW: warning mode — log when approaching limit, before scoring kicks in
+        $warnAt = (int) ceil($maxRequests * $warningThreshold);
+        if ($count === $warnAt) {
+            Log::info('Bot Guardian: Velocity warning', [
+                'ip' => $ip,
+                'requests' => $count,
+                'max' => $maxRequests,
+                'window' => $timeWindow,
+                'message' => "IP approaching rate limit ({$count}/{$maxRequests})",
+            ]);
         }
 
         if ($count > $maxRequests) {
