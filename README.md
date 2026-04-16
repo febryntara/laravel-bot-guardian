@@ -76,7 +76,15 @@ protected $middleware = [
 
 ## Configuration
 
-Publish config:
+See [CONFIG.md](./CONFIG.md) for detailed documentation of every config key — what it does, default values, impact when enabled/disabled, and trade-offs for each detector.
+
+Quick-start config reference below.
+
+### Enable / Disable Package
+
+```php
+'enabled' => true,                        // Master toggle
+```
 
 ```bash
 php artisan vendor:publish --provider="Febryntara\LaravelBotGuardian\BotGuardianServiceProvider" --tag="botguardian-config"
