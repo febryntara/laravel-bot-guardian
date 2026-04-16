@@ -146,14 +146,14 @@ class BotGuardianMiddleware
             ->generateToken($request->ip());
 
         $response->headers->setCookie(
-            \Illuminate\Cookie\Cookie::make(
+            \Symfony\Component\HttpFoundation\Cookie::create(
                 \Febryntara\LaravelBotGuardian\Detectors\JsChallengeDetector::cookieName(),
                 $token,
                 (int) (config('botguardian.js_challenge.token_validity', 300) / 60) + 5, // +5 min buffer
                 '/',
                 null,
                 config('app.env') !== 'local', // secure in production
-                true, // httpOnly=false — JS needs to read AND set this cookie
+                false, // httpOnly=false — JS needs to read AND set this cookie
                 false,
                 'Lax'
             )

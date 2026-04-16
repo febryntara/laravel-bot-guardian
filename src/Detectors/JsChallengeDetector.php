@@ -81,8 +81,9 @@ class JsChallengeDetector implements DetectorInterface
         }
 
         // Optionally challenge API routes that serve HTML content
-        if (! empty($config['challenge_api_routes'])) {
-            foreach ($config['challenge_api_routes'] as $pattern) {
+        $apiRoutes = $config['challenge_api_routes'] ?? [];
+        if (! empty($apiRoutes)) {
+            foreach ($apiRoutes as $pattern) {
                 if (fnmatch($pattern, $path)) {
                     return true;
                 }

@@ -16,11 +16,11 @@ class HeaderDetector implements DetectorInterface
         $score = 0;
 
         // Check empty user-agent
-        if ($config['block_empty_user_agent']) {
+        if ($config['block_empty_user_agent'] ?? false) {
             $userAgent = $request->userAgent();
             if (empty($userAgent)) {
                 $score += $config['empty_user_agent_score'] ?? 25;
-            } elseif (! empty($config['block_known_bots'])) {
+            } elseif (! empty($config['block_known_bots'] ?? false)) {
                 // Check known bot patterns
                 foreach ($config['known_bot_patterns'] ?? [] as $pattern) {
                     if (stripos($userAgent, $pattern) !== false) {
