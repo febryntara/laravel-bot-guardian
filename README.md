@@ -7,7 +7,7 @@ Lightweight, score-based bot protection middleware for Laravel. Detects and bloc
 ## Features
 
 - **Score-based detection** — satu violation bukan block; pola yang menentukan
-- **7 detection layers** — velocity, honeypot, headers, 404 spam, login brute-force, endpoint rate limit, behavioral pattern
+- **12 detection layers** — velocity, honeypot, headers, 404 spam, login brute-force, endpoint rate limit, behavioral pattern, JS challenge, proxy/VPN, distributed attack, slow & low attack, session anomaly
 - **Permanent block for repeat offenders** — recidivist attacker escalation
 - **Whitelist / Blacklist** — manual IP control (exact, CIDR, wildcard)
 - **Zero config required** — works out of the box with sensible defaults
@@ -24,10 +24,15 @@ Lightweight, score-based bot protection middleware for Laravel. Detects and bloc
 | **Velocity** | Request rate dari IP sama (30 req/60s) | +20 | Default |
 | **Honeypot** | Akses fake routes (`/wp-login.php`, `/.env`, dll) | +50 | Default |
 | **Headers** | Empty UA, known bot UA, missing Accept-Language | +10–25 | Default |
-| **404 Spam** | Hit non-existent endpoint berulang | +30 | Default |
+| **404 Spam** | Hit non-existent endpoint berulang (via terminate()) | +30 | Default |
 | **Login Attempts** | Brute-force di auth endpoints (5x/5min) | +40 | Manual |
 | **Endpoint Rate Limit** | Per-endpoint rate limiting (category-based) | +10–60 | Manual |
 | **Behavioral** | No-asset, regular interval, header fingerprint, deep-link | +15–30 | Manual |
+| **JS Challenge** | Headless browser / Puppeteer tanpa JS execution | +35–50 | Manual |
+| **Proxy / VPN** | Proxy chain anomaly via XFF/Via/Forwarded headers | +10–35 | Manual |
+| **Distributed Attack** | Multi-IP botnet fingerprint clustering | +2–30 | Manual |
+| **Slow & Low** | Long-window abuse, robotic timing, low endpoint diversity | +20–30 | Manual |
+| **Session Anomaly** | Session fixation, hijacking, burst rate | +20–40 | Manual |
 
 **Recidivist Escalation:** Jika IP diblock lebih dari 3x dalam 24 jam → **permanent block** (sampai manual unblock).
 
