@@ -4,7 +4,7 @@ namespace Febryntara\LaravelBotGuardian\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Febryntara\LaravelBotGuardian\Scorer\BotScoreCalculator;
@@ -87,7 +87,7 @@ class BotGuardianMiddleware
      * exceeded, set a PENDING block flag — the current request already has its
      * response committed, so the next request from this IP will be blocked.
      */
-    public function terminate(Request $request, $response): void
+    public function terminate(Request $request, Response $response): void
     {
         if (! config('botguardian.enabled', true)) {
             return;
