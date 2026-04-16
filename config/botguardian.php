@@ -64,6 +64,95 @@ return [
         'missing_accept_language_score' => 10,
     ],
 
+    // === JS CHALLENGE (headless browser / UA spoofing) ===
+    // Requires legitimate visitors to execute JavaScript (sets a verification cookie).
+    // NOT effective for API-only apps or when JS challenge is disabled.
+    // Combine with BehavioralPatternDetector for defense-in-depth.
+    'js_challenge' => [
+        'enabled' => false,
+        'secret' => 'botguardian-challenge-secret', // CHANGE this in production!
+        'token_validity' => 300, // seconds, token valid for this bucket
+        'missing_token_score' => 35,
+        'invalid_token_score' => 50,
+        'skip_prefixes' => [
+            'api/', '_debugbar/', 'telescope/', 'horizon/',
+            'socket.io/', 'ws/', 'graphql',
+        ],
+        'challenge_api_routes' => [], // Routes that serve HTML content via API
+    ],
+
+    // === PROXY / VPN / TOR DETECTION (header chain analysis) ===
+    // Probabilistic — false positives possible for users behind corporate CDN/proxy.
+    // Tune thresholds for your infrastructure (Cloudflare = expect Via/XFF headers).
+    'proxy' => [
+        'enabled' => false,
+        'max_xff_hops' => 3,
+        'xff_too_many_hops_score' => 20,
+        'xff_private_ip_score' => 30,
+        'xff_without_xri_score' => 10,
+        'xff_spoofed_chain_score' => 35,
+        'xff_matches_direct_ip_score' => 25,
+        'via_header_score' => 25,
+        'xri_alone_score' => 15,
+        'xri_private_ip_score' => 30,
+        'forwarded_private_score' => 30,
+        'max_score' => 50,
+    ],
+
+    // === DISTRIBUTED ATTACK (multi-IP coordinated botnet) ===
+    // Detects: 1000 IPs × 1 req each → all under velocity threshold but targeted.
+    // Strategy: fingerprint clustering (same UA = same bot) + endpoint concentration.
+    'distributed' => [
+        'enabled' => false,
+        'window' => 120,
+        'ips_per_fingerprint' => 10,     // Flag if >10 IPs share same UA fingerprint
+        'score_per_ip' => 2,
+        'max_fingerprint_score' => 30,
+        'endpoint_window' => 300,
+        'ips_per_endpoint' => 20,         // Flag if >20 IPs hit same sensitive endpoint
+        'score_per_ip' => 1,
+        'max_endpoint_score' => 30,
+        'sensitive_patterns' => [
+            'login', 'auth', 'password', 'reset', 'admin',
+            'api/auth', 'api/login', 'api/reset',
+        ],
+        'max_score' => 60,
+    ],
+
+    // === SLOW & LOW ATTACK (bypass velocity by being slow) ===
+    // Detects: 1 req/2min × 24h = 720 req (no velocity trigger, but abnormal total).
+    // Strategy: long-window total + interval entropy + endpoint diversity.
+    'slow_attack' => [
+        'enabled' => false,
+        'long_window' => 86400, // 24h total request tracking
+        'daily_request_limit' => 2000,
+        'long_window_score' => 20,
+        'interval_window' => 600,
+        'interval_coef_threshold' => 0.1,  // stddev/mean < 10% = suspicious
+        'regular_interval_score' => 25,
+        'diversity_window' => 3600,
+        'min_requests_for_diversity' => 20,
+        'min_unique_endpoints' => 5,
+        'low_diversity_score' => 30,
+        'max_score' => 60,
+    ],
+
+    // === SESSION ANOMALY (fixation / hijacking detection) ===
+    // Tracks: session ID changes (fixation), multi-IP sessions (hijacking),
+    // session burst rate (automated attacks via stolen session).
+    // Requires Laravel session middleware running before BotGuardian.
+    'session' => [
+        'enabled' => false,
+        'max_ips_per_session' => 3,
+        'session_fixation_score' => 40,
+        'session_hijack_score' => 30,
+        'burst_window' => 60,
+        'max_burst_requests' => 30,
+        'burst_score' => 20,
+        'session_tracking_window' => 86400,
+        'max_score' => 50,
+    ],
+
     // === LOGIN ATTEMPTS (brute-force) ===
     'login_attempts' => [
         'enabled' => false, // Enable manually for auth-heavy apps

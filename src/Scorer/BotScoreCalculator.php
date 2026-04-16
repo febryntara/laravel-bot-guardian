@@ -29,6 +29,13 @@ class BotScoreCalculator
             new \Febryntara\LaravelBotGuardian\Detectors\LoginAttemptDetector(),
             new \Febryntara\LaravelBotGuardian\Detectors\EndpointRateLimiter(),
             new \Febryntara\LaravelBotGuardian\Detectors\BehavioralPatternDetector(),
+            // NEW — gap coverage:
+            new \Febryntara\LaravelBotGuardian\Detectors\ProxyDetector(),
+            new \Febryntara\LaravelBotGuardian\Detectors\DistributedAttackDetector(),
+            new \Febryntara\LaravelBotGuardian\Detectors\SlowAttackDetector(),
+            new \Febryntara\LaravelBotGuardian\Detectors\SessionAnomalyDetector(),
+            // NEW — UA rotation / headless browser
+            new \Febryntara\LaravelBotGuardian\Detectors\JsChallengeDetector(),
         ];
     }
 

@@ -108,6 +108,56 @@ class BotGuardianMiddleware
                 Cache::put("botguardian:pending_block:{$ip}", true, config('botguardian.block_duration', 3600));
             }
         }
+
+        // Inject JS challenge cookie — the browser will see Set-Cookie and store bg_chk.
+        // On the NEXT request, JsChallengeDetector checks for this cookie.
+        // Headless browsers without JS exec won't have it → score applied.
+        $this->injectJsChallengeCookie($request, $response);
+    }
+
+    /**
+     * Set the JS challenge verification cookie on the response.
+     *
+     * The bg_chk cookie is a signed token (HMAC of IP + timestamp bucket).
+     * Real browsers that execute JS see the Set-Cookie header and store it.
+     * Subsequent requests include bg_chk → JsChallengeDetector passes.
+     *
+     * Skipped for: API routes, non-HTML responses, blocked IPs, whitelisted IPs.
+     */
+    protected function injectJsChallengeCookie(Request $request, Response $response): void
+    {
+        if (! config('botguardian.js_challenge.enabled', false)) {
+            return;
+        }
+
+        // Only inject on HTML responses (browsers are the target)
+        $accept = $request->header('Accept', '');
+        if (! str_contains($accept, 'text/html') && $response->getStatusCode() !== 200) {
+            return;
+        }
+
+        // Check if bg_chk is already set (don't overwrite valid token)
+        if ($request->cookie(\Febryntara\LaravelBotGuardian\Detectors\JsChallengeDetector::cookieName())) {
+            return;
+        }
+
+        // Generate signed token for this IP
+        $token = (new \Febryntara\LaravelBotGuardian\Detectors\JsChallengeDetector())
+            ->generateToken($request->ip());
+
+        $response->headers->setCookie(
+            \Illuminate\Cookie\Cookie::make(
+                \Febryntara\LaravelBotGuardian\Detectors\JsChallengeDetector::cookieName(),
+                $token,
+                (int) (config('botguardian.js_challenge.token_validity', 300) / 60) + 5, // +5 min buffer
+                '/',
+                null,
+                config('app.env') !== 'local', // secure in production
+                true, // httpOnly=false — JS needs to read AND set this cookie
+                false,
+                'Lax'
+            )
+        );
     }
 
     /**
