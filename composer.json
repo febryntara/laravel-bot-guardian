@@ -1,0 +1,40 @@
+{
+    "name": "febryntara/laravel-bot-guardian",
+    "description": "Lightweight Laravel bot protection middleware that detects and blocks automated attacks based on velocity, honeypots, header anomalies, and behavioral patterns.",
+    "keywords": ["laravel", "bot-protection", "security", "middleware", "firewall"],
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Febry",
+            "email": "febryntara@example.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.1|^8.2|^8.3",
+        "illuminate/support": "^10.0|^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0|^10.0",
+        "phpunit/phpunit": "^10.5|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Febryntara\\LaravelBotGuardian\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Febryntara\\LaravelBotGuardian\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Febryntara\\LaravelBotGuardian\\BotGuardianServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
